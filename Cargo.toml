@@ -7,7 +7,7 @@ edition = "2021"
 cortex-m-rt = "0.7"
 lsm303agr = "0.3"
 rtt-target = "0.4"
-micromath = "1.0.1"
+micromath = "2.1.0"
 
 [dependencies.microbit-v2]
 git = "https://github.com/BartMassey-upstream/microbit"
