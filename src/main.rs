@@ -4,18 +4,11 @@
 use panic_rtt_target as _;
 use rtt_target::{rprintln, rtt_init_print};
 
-// use crate::twim::Twim;
 use cortex_m_rt::entry;
-// use lsm303agr::interface::*;
-// use lsm303agr::mode::MagOneShot;
-// use lsm303agr::Lsm303agr;
 
 use drop::{BoardState, MB2};
 
-use microbit::{
-    board::Board,
-    hal::{prelude::*, twim},
-};
+use microbit::{board::Board, hal::prelude::*};
 
 use micromath::F32Ext;
 
@@ -39,6 +32,7 @@ fn main() -> ! {
             y += data.1;
             z += data.2;
 
+            // rprintln!("print\t{}, {}, {}\t", x * 1000.0, y * 1000.0, z * 1000.0);
             mb2_board.timer.delay_us(500u32);
         }
         (x, y, z) = average_over_sample(num_samples, x, y, z);
@@ -55,6 +49,7 @@ fn main() -> ! {
     }
 }
 
+/*
 fn microbit_is_falling(x: f32, y: f32, z: f32) -> BoardState {
     let combined_strength = x.powf(2.0) + y.powf(2.0) + z.powf(2.0);
     let result = combined_strength.sqrt();
@@ -66,8 +61,10 @@ fn microbit_is_falling(x: f32, y: f32, z: f32) -> BoardState {
         BoardState::NotFalling
     }
 }
+*/
 
 fn average_over_sample(sample_size: i16, x: f32, y: f32, z: f32) -> (f32, f32, f32) {
+    // rprintln!("{} {} {}\t", x * 1000.0, y * 1000.0, z * 1000.0);
     let divisor: f32 = sample_size.into();
     (x / divisor, y / divisor, z / divisor)
 }
