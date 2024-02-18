@@ -7,23 +7,24 @@ use crate::twim::Twim;
 use core::convert::Into;
 use lsm303agr::interface::I2cInterface;
 use lsm303agr::mode::MagOneShot;
-use lsm303agr::Lsm303agr;
+use lsm303agr::{Interrupt, Lsm303agr};
 use rtt_target::rprintln;
 
 use microbit::{
-    board::Board,
+    board::{Board, I2CInternalPins},
     display::nonblocking::Display,
     hal::gpiote::{Gpiote, GpioteChannel},
     hal::{
-        gpio::{Floating, Input, Pin},
+        gpio::{p0, Disconnected, Floating, Input, Pin},
         twim, Timer,
     },
     pac::twim0::frequency::FREQUENCY_A,
-    pac::{self, interrupt, TIMER0, TIMER1},
+    pac::{self as pac, interrupt, TIMER0, TIMER1},
 };
 
 use critical_section_lock_mut::LockMut;
 use micromath::F32Ext;
+use pac::P0;
 
 static GPIO: LockMut<Gpiote> = LockMut::new();
 static DISPLAY: LockMut<Display<TIMER1>> = LockMut::new();
@@ -42,6 +43,8 @@ pub struct MB2 {
 impl MB2 {
     pub fn new(board: Board) -> Self {
         let mut timer = Timer::new(board.TIMER0);
+        // let p0 = board.i2c_internal;
+        // p0::Parts::new(pac::P0);
 
         let i2c = { twim::Twim::new(board.TWIM0, board.i2c_internal.into(), FREQUENCY_A::K100) };
         let mut sensor: Lsm303agr<I2cInterface<Twim<pac::TWIM0>>, MagOneShot> =
@@ -55,11 +58,9 @@ impl MB2 {
             )
             .unwrap();
 
-        sensor
-            .acc_enable_interrupt(lsm303agr::Interrupt::Click)
-            .unwrap();
+        sensor.acc_enable_interrupt(Interrupt::DataReady1).unwrap();
 
-        rprintln!("{:?}\n", sensor.accel_status());
+        // rprintln!("{:?}\n", sensor.accel_status());
 
         let state = BoardState::NotFalling;
 
@@ -67,15 +68,12 @@ impl MB2 {
 
         DISPLAY.init(display);
         let gpiote = Gpiote::new(board.GPIOTE);
-        let setup_channel = |channel: GpioteChannel, pin: &Pin<Input<Floating>>| {
-            channel.input_pin(pin).hi_to_lo().enable_interrupt();
+        let setup_channel = |channel: GpioteChannel, pin: twim::Pins| {
+            channel.input_pin(&pin.sda).hi_to_lo().enable_interrupt();
             channel.reset_events();
         };
 
-        setup_channel(
-            gpiote.channel0(),
-            &board.pins.p0_25.degrade().into_floating_input(),
-        );
+        setup_channel(gpiote.channel0(), board.i2c_internal.into());
 
         GPIO.init(gpiote);
 
@@ -96,7 +94,7 @@ impl MB2 {
 
     pub fn get_accel_data(&mut self) -> (f32, f32, f32) {
         let accel_reading = self.sensor.acceleration().unwrap();
-        rprintln!("{:?}\n", self.sensor.accel_status());
+        // rprintln!("{:?}\n", self.sensor.accel_status());
         let (x, y, z) = accel_reading.xyz_mg();
         (
             (x as f32) / 1000.0,
