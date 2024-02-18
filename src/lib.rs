@@ -15,7 +15,7 @@ use microbit::{
     display::nonblocking::Display,
     hal::gpiote::{Gpiote, GpioteChannel},
     hal::{
-        gpio::{p0, Disconnected, Floating, Input, Pin},
+        gpio::{self, p0, Disconnected, Floating, Input, Pin},
         twim, Timer,
     },
     pac::twim0::frequency::FREQUENCY_A,
@@ -41,55 +41,59 @@ pub struct MB2 {
 }
 
 impl MB2 {
-    pub fn new(board: Board) -> Self {
-        let mut timer = Timer::new(board.TIMER0);
-        // let p0 = board.i2c_internal;
-        // p0::Parts::new(pac::P0);
+    pub fn new() -> Result<Self, &'static str> {
+        if let Some(board) = Board::take() {
+            let gpiote = Gpiote::new(board.GPIOTE);
+            let mut timer = Timer::new(board.TIMER0);
+            let i2c_pins: twim::Pins = board.i2c_internal.into();
+            let i2c = { twim::Twim::new(board.TWIM0, i2c_pins, FREQUENCY_A::K100) };
+            let mut sensor = Lsm303agr::new_with_i2c(i2c);
 
-        let i2c = { twim::Twim::new(board.TWIM0, board.i2c_internal.into(), FREQUENCY_A::K100) };
-        let mut sensor: Lsm303agr<I2cInterface<Twim<pac::TWIM0>>, MagOneShot> =
-            Lsm303agr::new_with_i2c(i2c);
-        sensor.init().unwrap();
-        sensor
-            .set_accel_mode_and_odr(
-                &mut timer,
-                lsm303agr::AccelMode::HighResolution,
-                lsm303agr::AccelOutputDataRate::Hz100,
-            )
-            .unwrap();
+            sensor.init().unwrap();
+            sensor
+                .set_accel_mode_and_odr(
+                    &mut timer,
+                    lsm303agr::AccelMode::HighResolution,
+                    lsm303agr::AccelOutputDataRate::Hz100,
+                )
+                .unwrap();
 
-        sensor.acc_enable_interrupt(Interrupt::DataReady1).unwrap();
+            sensor.acc_enable_interrupt(Interrupt::DataReady1).unwrap();
+            let state = BoardState::NotFalling;
 
+            let display = Display::new(board.TIMER1, board.display_pins);
+
+            DISPLAY.init(display);
+
+            let setup_channel = |channel: GpioteChannel, pin: gpio::Pin<Input<Floating>>| {
+                channel.input_pin(&pin).hi_to_lo().enable_interrupt();
+                channel.reset_events();
+            };
+
+            setup_channel(
+                gpiote.channel0(),
+                board.pins.p0_13.into_floating_input().degrade(),
+            );
+
+            GPIO.init(gpiote);
+
+            unsafe {
+                //            board.NVIC.set_priority(pac::Interrupt::TIMER1, 128);
+                //            pac::NVIC::unmask(pac::Interrupt::TIMER1);
+                //board.NVIC.set_priority(pac::Interrupt::GPIOTE, 10);
+                pac::NVIC::unmask(pac::Interrupt::GPIOTE);
+            }
+            pac::NVIC::unpend(pac::Interrupt::GPIOTE);
+
+            Ok(MB2 {
+                sensor,
+                timer,
+                state,
+            })
+        } else {
+            Err("Board not available")
+        }
         // rprintln!("{:?}\n", sensor.accel_status());
-
-        let state = BoardState::NotFalling;
-
-        let display = Display::new(board.TIMER1, board.display_pins);
-
-        DISPLAY.init(display);
-        let gpiote = Gpiote::new(board.GPIOTE);
-        let setup_channel = |channel: GpioteChannel, pin: twim::Pins| {
-            channel.input_pin(&pin.sda).hi_to_lo().enable_interrupt();
-            channel.reset_events();
-        };
-
-        setup_channel(gpiote.channel0(), board.i2c_internal.into());
-
-        GPIO.init(gpiote);
-
-        unsafe {
-            //            board.NVIC.set_priority(pac::Interrupt::TIMER1, 128);
-            //            pac::NVIC::unmask(pac::Interrupt::TIMER1);
-            //board.NVIC.set_priority(pac::Interrupt::GPIOTE, 10);
-            pac::NVIC::unmask(pac::Interrupt::GPIOTE);
-        }
-        pac::NVIC::unpend(pac::Interrupt::GPIOTE);
-
-        MB2 {
-            sensor,
-            timer,
-            state,
-        }
     }
 
     pub fn get_accel_data(&mut self) -> (f32, f32, f32) {
@@ -104,6 +108,7 @@ impl MB2 {
     }
 }
 
+/*
 #[interrupt]
 fn TIMER1() {
     DISPLAY.with_lock(|display| display.handle_display_event());
@@ -111,6 +116,7 @@ fn TIMER1() {
 
 #[interrupt]
 fn TIMER0() {}
+*/
 
 fn microbit_is_falling(x: f32, y: f32, z: f32) -> BoardState {
     let combined_strength = x.powf(2.0) + y.powf(2.0) + z.powf(2.0);
@@ -130,4 +136,9 @@ fn GPIOTE() {
     GPIO.with_lock(|gpiote| {
         rprintln!("accel int");
     });
+}
+
+#[interrupt]
+fn SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0() {
+    rprintln!("accel int");
 }

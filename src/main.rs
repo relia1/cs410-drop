@@ -18,7 +18,7 @@ use micromath::F32Ext;
 fn main() -> ! {
     rtt_init_print!();
 
-    let mut mb2_board = MB2::new(Board::take().unwrap());
+    let mut mb2_board = MB2::new().unwrap();
 
     loop {
         // rprintln!("test");
