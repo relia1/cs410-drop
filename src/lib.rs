@@ -42,7 +42,7 @@ pub struct MB2 {
 
 impl MB2 {
     pub fn new() -> Result<Self, &'static str> {
-        if let Some(board) = Board::take() {
+        if let Some(mut board) = Board::take() {
             let gpiote = Gpiote::new(board.GPIOTE);
             let mut timer = Timer::new(board.TIMER0);
             let i2c_pins: twim::Pins = board.i2c_internal.into();
@@ -80,10 +80,15 @@ impl MB2 {
             unsafe {
                 //            board.NVIC.set_priority(pac::Interrupt::TIMER1, 128);
                 //            pac::NVIC::unmask(pac::Interrupt::TIMER1);
-                //board.NVIC.set_priority(pac::Interrupt::GPIOTE, 10);
+                board.NVIC.set_priority(pac::Interrupt::GPIOTE, 10);
+                board
+                    .NVIC
+                    .set_priority(pac::Interrupt::SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0, 1);
                 pac::NVIC::unmask(pac::Interrupt::GPIOTE);
+                pac::NVIC::unmask(pac::Interrupt::SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0);
             }
             pac::NVIC::unpend(pac::Interrupt::GPIOTE);
+            pac::NVIC::unpend(pac::Interrupt::SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0);
 
             Ok(MB2 {
                 sensor,
