@@ -8,9 +8,9 @@ use cortex_m_rt::entry;
 
 use drop::{BoardState, MB2};
 
-use microbit::{board::Board, hal::prelude::*};
+use microbit::{hal::prelude::*};
 
-use micromath::F32Ext;
+
 
 /*
 */

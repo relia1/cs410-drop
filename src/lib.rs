@@ -11,11 +11,11 @@ use lsm303agr::{Interrupt, Lsm303agr};
 use rtt_target::rprintln;
 
 use microbit::{
-    board::{Board, I2CInternalPins},
+    board::Board,
     display::nonblocking::Display,
     hal::gpiote::{Gpiote, GpioteChannel},
     hal::{
-        gpio::{self, p0, p0::Parts, Disconnected, Floating, Input, Pin, PullUp},
+        gpio::{self, p0::Parts, Input, PullUp},
         twim, Timer,
     },
     pac::twim0::frequency::FREQUENCY_A,
@@ -24,7 +24,6 @@ use microbit::{
 
 use critical_section_lock_mut::LockMut;
 use micromath::F32Ext;
-use pac::P0;
 
 static GPIO: LockMut<Gpiote> = LockMut::new();
 static DISPLAY: LockMut<Display<TIMER1>> = LockMut::new();
@@ -45,9 +44,11 @@ impl MB2 {
         if let Some(mut board) = Board::take() {
             let gpiote = Gpiote::new(board.GPIOTE);
             let mut timer = Timer::new(board.TIMER0);
-            let i2c_pins: twim::Pins = board.i2c_internal.into();
-            let mut i2c = { twim::Twim::new(board.TWIM0, i2c_pins, FREQUENCY_A::K100) };
-            i2c.enable();
+            let state = BoardState::NotFalling;
+            let display = Display::new(board.TIMER1, board.display_pins);
+            DISPLAY.init(display);
+            let i2c =
+                { twim::Twim::new(board.TWIM0, board.i2c_internal.into(), FREQUENCY_A::K100) };
             let mut sensor = Lsm303agr::new_with_i2c(i2c);
 
             sensor.init().unwrap();
@@ -60,16 +61,12 @@ impl MB2 {
                 .unwrap();
 
             sensor.acc_enable_interrupt(Interrupt::DataReady1).unwrap();
-            let state = BoardState::NotFalling;
 
-            let display = Display::new(board.TIMER1, board.display_pins);
-
-            DISPLAY.init(display);
+            // this ended up being the only way I was able to get the pin for the interrupt
             unsafe {
                 let p = pac::Peripherals::steal();
-                let my_pin = Parts::new(p.P0);
-                let scl = my_pin.p0_08.degrade().into_pullup_input();
-                let sda = my_pin.p0_16.degrade().into_pullup_input();
+                let p0 = Parts::new(p.P0);
+                let sda = p0.p0_16.degrade().into_pullup_input();
 
                 let setup_channel = |channel: GpioteChannel, pin: gpio::Pin<Input<PullUp>>| {
                     channel.input_pin(&pin).hi_to_lo().enable_interrupt();
@@ -81,8 +78,8 @@ impl MB2 {
                 GPIO.init(gpiote);
             }
             unsafe {
-                //            board.NVIC.set_priority(pac::Interrupt::TIMER1, 128);
-                //            pac::NVIC::unmask(pac::Interrupt::TIMER1);
+                // board.NVIC.set_priority(pac::Interrupt::TIMER1, 128);
+                // pac::NVIC::unmask(pac::Interrupt::TIMER1);
                 board.NVIC.set_priority(pac::Interrupt::GPIOTE, 10);
                 board
                     .NVIC
@@ -121,9 +118,6 @@ impl MB2 {
 fn TIMER1() {
     DISPLAY.with_lock(|display| display.handle_display_event());
 }
-
-#[interrupt]
-fn TIMER0() {}
 */
 
 fn microbit_is_falling(x: f32, y: f32, z: f32) -> BoardState {
@@ -140,19 +134,10 @@ fn microbit_is_falling(x: f32, y: f32, z: f32) -> BoardState {
 
 #[interrupt]
 fn GPIOTE() {
-    rprintln!("accel int");
-    GPIO.with_lock(|gpiote| {
+    GPIO.with_lock(|_gpiote| {
         rprintln!("accel int gpiote");
     });
     unsafe {
         pac::NVIC::unpend(pac::Interrupt::GPIOTE);
-    }
-}
-
-#[interrupt]
-fn SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0() {
-    rprintln!("accel int spim");
-    unsafe {
-        pac::NVIC::unpend(pac::Interrupt::SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0);
     }
 }
