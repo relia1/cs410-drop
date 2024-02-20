@@ -4,12 +4,17 @@
 use panic_rtt_target as _;
 use rtt_target::{rprintln, rtt_init_print};
 
+use cortex_m::asm;
 use cortex_m_rt::entry;
 
-use drop::{BoardState, MB2};
+use drop::{BoardState, GPIO, MB2};
+use microbit::pac::{self as pac, interrupt, TIMER0, TIMER1};
 
-use microbit::hal::prelude::*;
+// use microbit::hal::prelude::*;
+use critical_section_lock_mut::critical_section;
+use critical_section_lock_mut::LockMut;
 
+static MB2_ACCEL: LockMut<MB2> = LockMut::new();
 /*
 */
 #[entry]
@@ -17,9 +22,25 @@ fn main() -> ! {
     rtt_init_print!();
 
     let mut mb2_board = MB2::new().unwrap();
+    mb2_board.get_accel_data();
+    MB2_ACCEL.init(mb2_board);
+    rprintln!("before loop main accel int gpiote");
+    // pac::NVIC::unpend(pac::Interrupt::GPIOTE);
 
+    /*
+    MB2_ACCEL.with_lock(|cs| {
+        cs.get_accel_data();
+    });
+    */
     loop {
-        // rprintln!("test");
+        unsafe {
+            pac::NVIC::unmask(pac::Interrupt::GPIOTE);
+        }
+        rprintln!("before loop main accel int gpiote");
+
+        pac::NVIC::unpend(pac::Interrupt::GPIOTE);
+
+        /*
         let mut x: f32 = 0.0;
         let mut y: f32 = 0.0;
         let mut z: f32 = 0.0;
@@ -29,13 +50,8 @@ fn main() -> ! {
             x += data.0;
             y += data.1;
             z += data.2;
-
-            // rprintln!("print\t{}, {}, {}\t", x * 1000.0, y * 1000.0, z * 1000.0);
-            mb2_board.timer.delay_us(500u32);
         }
         (x, y, z) = average_over_sample(num_samples, x, y, z);
-        // rprintln!("{} {} {}\t", x * 1000.0, y * 1000.0, z * 1000.0);
-        // let state = microbit_is_falling(x, y, z);
         match mb2_board.state {
             BoardState::Falling => {
                 rprintln!("{} {} {}\t", x, y, z);
@@ -43,7 +59,12 @@ fn main() -> ! {
             }
             BoardState::NotFalling => {}
         }
-        // timer2.delay_ms(10u32);
+        */
+        asm::wfi();
+        critical_section::with(|cs| {
+            let (a, b, c) = mb2_board.get_accel_data();
+            rprintln!("{} {} {}\t", a, b, c);
+        });
     }
 }
 
@@ -71,3 +92,13 @@ fn average_over_sample(sample_size: i16, x: f32, y: f32, z: f32) -> (f32, f32, f
  * concept: have an interrupt for the imu (accelerometer) that fills a queue and when
  * that queue is filled take a look at the data
 */
+
+#[interrupt]
+fn GPIOTE() {
+    GPIO.with_lock(|gpiote| {
+        // let (a, b, c) = mb2_accel.get_accel_data();
+        // rprintln!("accel int gpiote: {} {} {}", a, b, c);
+        rprintln!("interrupt {}\n", gpiote.channel0().is_event_triggered());
+    });
+    pac::NVIC::unpend(pac::Interrupt::GPIOTE);
+}

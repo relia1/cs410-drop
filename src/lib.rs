@@ -25,7 +25,7 @@ use microbit::{
 use critical_section_lock_mut::LockMut;
 use micromath::F32Ext;
 
-static GPIO: LockMut<Gpiote> = LockMut::new();
+pub static GPIO: LockMut<Gpiote> = LockMut::new();
 static DISPLAY: LockMut<Display<TIMER1>> = LockMut::new();
 
 pub enum BoardState {
@@ -49,7 +49,6 @@ impl MB2 {
             DISPLAY.init(display);
             let i2c =
                 { twim::Twim::new(board.TWIM0, board.i2c_internal.into(), FREQUENCY_A::K100) };
-            // let test: Pin<Input<PullUp>> = board.i2c_internal.into().degrade().sda;
             let mut sensor = Lsm303agr::new_with_i2c(i2c);
 
             sensor.init().unwrap();
@@ -57,7 +56,7 @@ impl MB2 {
                 .set_accel_mode_and_odr(
                     &mut timer,
                     lsm303agr::AccelMode::HighResolution,
-                    lsm303agr::AccelOutputDataRate::Hz100,
+                    lsm303agr::AccelOutputDataRate::Hz1,
                 )
                 .unwrap();
 
@@ -78,11 +77,10 @@ impl MB2 {
                 GPIO.init(gpiote);
             }
             unsafe {
-                // board.NVIC.set_priority(pac::Interrupt::TIMER1, 128);
-                // pac::NVIC::unmask(pac::Interrupt::TIMER1);
                 board.NVIC.set_priority(pac::Interrupt::GPIOTE, 10);
                 pac::NVIC::unmask(pac::Interrupt::GPIOTE);
             }
+
             pac::NVIC::unpend(pac::Interrupt::GPIOTE);
 
             Ok(MB2 {
@@ -127,6 +125,7 @@ fn microbit_is_falling(x: f32, y: f32, z: f32) -> BoardState {
     }
 }
 
+/*
 #[interrupt]
 fn GPIOTE() {
     GPIO.with_lock(|_gpiote| {
@@ -134,3 +133,4 @@ fn GPIOTE() {
     });
     pac::NVIC::unpend(pac::Interrupt::GPIOTE);
 }
+*/
