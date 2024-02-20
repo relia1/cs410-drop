@@ -8,9 +8,7 @@ use cortex_m_rt::entry;
 
 use drop::{BoardState, MB2};
 
-use microbit::{hal::prelude::*};
-
-
+use microbit::hal::prelude::*;
 
 /*
 */

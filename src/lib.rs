@@ -49,6 +49,7 @@ impl MB2 {
             DISPLAY.init(display);
             let i2c =
                 { twim::Twim::new(board.TWIM0, board.i2c_internal.into(), FREQUENCY_A::K100) };
+            // let test: Pin<Input<PullUp>> = board.i2c_internal.into().degrade().sda;
             let mut sensor = Lsm303agr::new_with_i2c(i2c);
 
             sensor.init().unwrap();
@@ -62,18 +63,17 @@ impl MB2 {
 
             sensor.acc_enable_interrupt(Interrupt::DataReady1).unwrap();
 
-            // this ended up being the only way I was able to get the pin for the interrupt
             unsafe {
                 let p = pac::Peripherals::steal();
                 let p0 = Parts::new(p.P0);
-                let sda = p0.p0_16.degrade().into_pullup_input();
+                let sda_pin = p0.p0_16.degrade().into_pullup_input();
 
                 let setup_channel = |channel: GpioteChannel, pin: gpio::Pin<Input<PullUp>>| {
                     channel.input_pin(&pin).hi_to_lo().enable_interrupt();
                     channel.reset_events();
                 };
 
-                setup_channel(gpiote.channel0(), sda);
+                setup_channel(gpiote.channel0(), sda_pin);
 
                 GPIO.init(gpiote);
             }
@@ -81,14 +81,9 @@ impl MB2 {
                 // board.NVIC.set_priority(pac::Interrupt::TIMER1, 128);
                 // pac::NVIC::unmask(pac::Interrupt::TIMER1);
                 board.NVIC.set_priority(pac::Interrupt::GPIOTE, 10);
-                board
-                    .NVIC
-                    .set_priority(pac::Interrupt::SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0, 1);
                 pac::NVIC::unmask(pac::Interrupt::GPIOTE);
-                pac::NVIC::unmask(pac::Interrupt::SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0);
             }
             pac::NVIC::unpend(pac::Interrupt::GPIOTE);
-            pac::NVIC::unpend(pac::Interrupt::SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0);
 
             Ok(MB2 {
                 sensor,
@@ -137,7 +132,5 @@ fn GPIOTE() {
     GPIO.with_lock(|_gpiote| {
         rprintln!("accel int gpiote");
     });
-    unsafe {
-        pac::NVIC::unpend(pac::Interrupt::GPIOTE);
-    }
+    pac::NVIC::unpend(pac::Interrupt::GPIOTE);
 }
