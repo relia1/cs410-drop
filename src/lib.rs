@@ -15,7 +15,7 @@ use microbit::{
     display::nonblocking::Display,
     hal::gpiote::{Gpiote, GpioteChannel},
     hal::{
-        gpio::{self, p0::Parts, Input, PullUp},
+        gpio::{self, p0::Parts, Floating, Input, Level, Output, PullUp, PushPull},
         twim, Timer,
     },
     pac::twim0::frequency::FREQUENCY_A,
@@ -23,7 +23,7 @@ use microbit::{
 };
 
 use critical_section_lock_mut::LockMut;
-use micromath::F32Ext;
+// use micromath::F32Ext;
 
 pub static GPIO: LockMut<Gpiote> = LockMut::new();
 static DISPLAY: LockMut<Display<TIMER1>> = LockMut::new();
@@ -47,16 +47,15 @@ impl MB2 {
             let state = BoardState::NotFalling;
             let display = Display::new(board.TIMER1, board.display_pins);
             DISPLAY.init(display);
-            let i2c =
-                { twim::Twim::new(board.TWIM0, board.i2c_internal.into(), FREQUENCY_A::K100) };
+            let i2c = twim::Twim::new(board.TWIM0, board.i2c_internal.into(), FREQUENCY_A::K100);
             let mut sensor = Lsm303agr::new_with_i2c(i2c);
 
             sensor.init().unwrap();
             sensor
                 .set_accel_mode_and_odr(
                     &mut timer,
-                    lsm303agr::AccelMode::HighResolution,
-                    lsm303agr::AccelOutputDataRate::Hz1,
+                    lsm303agr::AccelMode::Normal,
+                    lsm303agr::AccelOutputDataRate::Hz100,
                 )
                 .unwrap();
 
@@ -65,21 +64,29 @@ impl MB2 {
             unsafe {
                 let p = pac::Peripherals::steal();
                 let p0 = Parts::new(p.P0);
-                let sda_pin = p0.p0_16.degrade().into_pullup_input();
+                let sda_pin = p0.p0_25.degrade().into_pulldown_input();
 
-                let setup_channel = |channel: GpioteChannel, pin: gpio::Pin<Input<PullUp>>| {
-                    channel.input_pin(&pin).hi_to_lo().enable_interrupt();
+                /*
+                let setup_channel = |channel: GpioteChannel, pin: gpio::Pin<Output<PushPull>>| {
+                    channel.input_pin(&pin).enable_interrupt();
                     channel.reset_events();
                 };
+                */
 
-                setup_channel(gpiote.channel0(), sda_pin);
+                // setup_channel(gpiote.channel0(), sda_pin);
+                gpiote
+                    .channel0()
+                    .input_pin(&sda_pin)
+                    .hi_to_lo()
+                    .enable_interrupt();
 
                 GPIO.init(gpiote);
             }
             unsafe {
-                board.NVIC.set_priority(pac::Interrupt::GPIOTE, 10);
+                board.NVIC.set_priority(pac::Interrupt::GPIOTE, 6);
                 pac::NVIC::unmask(pac::Interrupt::GPIOTE);
             }
+            // rprintln!("pin 25: {}\n", gpiote.channel0().input_pin(&sda_pin). );
 
             pac::NVIC::unpend(pac::Interrupt::GPIOTE);
 
@@ -113,6 +120,7 @@ fn TIMER1() {
 }
 */
 
+/*
 fn microbit_is_falling(x: f32, y: f32, z: f32) -> BoardState {
     let combined_strength = x.powf(2.0) + y.powf(2.0) + z.powf(2.0);
     let result = combined_strength.sqrt();
@@ -124,6 +132,7 @@ fn microbit_is_falling(x: f32, y: f32, z: f32) -> BoardState {
         BoardState::NotFalling
     }
 }
+*/
 
 /*
 #[interrupt]
@@ -134,3 +143,8 @@ fn GPIOTE() {
     pac::NVIC::unpend(pac::Interrupt::GPIOTE);
 }
 */
+
+#[interrupt]
+fn SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0() {
+    rprintln!("data ready");
+}
