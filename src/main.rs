@@ -7,7 +7,7 @@ use rtt_target::{rprintln, rtt_init_print};
 use cortex_m::asm;
 use cortex_m_rt::entry;
 
-use drop::{BoardAccel, BoardState}; // {BoardState, GPIO, MB2};
+use drop::{BoardAccel, BoardState, DISPLAY}; // {BoardState, GPIO, MB2};
 use microbit::pac::{self as pac, interrupt};
 use microbit::{
     board::Board,
@@ -21,9 +21,6 @@ use lsm303agr::{AccelScale, Lsm303agr};
 
 use critical_section_lock_mut::LockMut;
 
-// pub static GPIO: LockMut<Gpiote> = LockMut::new();
-static DISPLAY: LockMut<Display<TIMER1>> = LockMut::new();
-
 #[entry]
 fn main() -> ! {
     rtt_init_print!();
@@ -35,7 +32,6 @@ fn main() -> ! {
     DISPLAY.init(display);
 
     let mut timer = Timer::new(board.TIMER0);
-    let mut state = BoardState::NotFalling;
     let i2c = twim::Twim::new(board.TWIM0, board.i2c_internal.into(), FREQUENCY_A::K100);
     let mut sensor = Lsm303agr::new_with_i2c(i2c);
 
@@ -55,12 +51,11 @@ fn main() -> ! {
     }
 
     pac::NVIC::unpend(pac::Interrupt::TIMER1);
-    let mut counter: u8 = 0;
 
+    let mut counter: u8 = 0;
     loop {
         if counter >= 5 {
             let (x, y, z) = board_accel.average_over_sample();
-            rprintln!("Averages x: {} y: {} z: {}", x, y, z);
             board_accel.microbit_is_falling(x as f32, y as f32, z as f32);
             counter = 0;
         }
@@ -68,45 +63,8 @@ fn main() -> ! {
         if sensor.accel_status().unwrap().xyz_new_data() {
             board_accel.add_tuple_to_total(sensor.acceleration().unwrap().xyz_mg());
             counter += 1;
-            // rprintln!("not waiting\n");
-        } // else {
-          // rprintln!("waiting\n");
-          //  asm::wfi();
-          // }
-          /*
-          MB2_ACCEL.with_lock(|cs| {
-              let (a, b, c) = cs.get_accel_data();
-              rprintln!("{} {} {}\n", a, b, c);
-          });
-          */
-
-        //rprintln!("main loop accel int gpiote");
-        /*
-        let mut x: i32 = 0.0;
-        let mut y: i32 = 0.0;
-        let mut z: i32 = 0.0;
-        let num_samples: i16 = 20;
-        for _ in 0..num_samples {
-            let data = mb2_board.get_accel_data();
-            x += data.0;
-            y += data.1;
-            z += data.2;
         }
-        (x, y, z) = average_over_sample(num_samples, x, y, z);
-        match mb2_board.state {
-            BoardState::Falling => {
-                rprintln!("{} {} {}\t", x, y, z);
-                rprintln!("Microbit is falling!\n");
-            }
-            BoardState::NotFalling => {}
-        }
-        */
-        /*
-        critical_section::with(|cs| {
-            let (a, b, c) = mb2_board.get_accel_data();
-            rprintln!("{} {} {}\t", a, b, c);
-        });
-        */
+        asm::wfi();
     }
 }
 

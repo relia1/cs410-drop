@@ -1,36 +1,18 @@
 #![no_std]
-// my own custom board abstractions go here
 
-use core::cell::RefCell;
-use cortex_m::asm;
-use cortex_m::interrupt::Mutex;
 use critical_section_lock_mut::LockMut;
-use microbit::hal::gpio::{self, p0::Parts, Output, PushPull};
-use microbit::hal::prelude::*; // U32Ext
-use microbit::hal::{delay::Delay, prelude, prelude::OutputPin, pwm, time::Hertz};
-use microbit::pac::{self, interrupt};
-use microbit::{board, Board};
+use microbit::display::nonblocking::Display;
+use microbit::hal::gpio::{self, p0::Parts};
+use microbit::hal::pwm;
+use microbit::pac::{self, TIMER1};
 use micromath::F32Ext;
 use panic_rtt_target as _;
-use rtt_target::{rprintln, rtt_init_print};
+use rtt_target::rprintln;
 
 // pub static BOARD: LockMut<board::Board> = LockMut::new();
 
-static SPEAKER2: Mutex<RefCell<Option<pwm::Pwm<pac::PWM0>>>> = Mutex::new(RefCell::new(None));
+pub static DISPLAY: LockMut<Display<TIMER1>> = LockMut::new();
 pub static SPEAKER: LockMut<BoardState> = LockMut::new();
-
-fn sine(samples: &mut [u16], q: u16, n: usize) {
-    use core::f32::consts::PI;
-    let step = 2.0 * PI * n as f32 / samples.len() as f32;
-    for (i, s) in samples.iter_mut().enumerate() {
-        // Get the next value.
-        let v = libm::sinf(i as f32 * step);
-        // Normalize to the range 0.0..=q-1.
-        let v = (q - 1) as f32 * (v + 1.0) / 2.0;
-        // Save a value in the range 0..=q-1.
-        *s = libm::floorf(v + 0.5) as u16;
-    }
-}
 
 #[derive(Debug, Clone, Copy)]
 pub enum BoardState {
@@ -78,6 +60,9 @@ impl BoardState {
                 .degrade()
                 .into_push_pull_output(gpio::Level::Low);
 
+            // https://github.com/pdx-cs-rust-embedded/mb2-audio-experiments/blob/hw-pwm/src/main.rs
+            // https://github.com/pdx-cs-rust-embedded/hello-audio/blob/main/src/main.rs
+            // referenced as examples
             let speaker = pwm::Pwm::new(p.PWM0);
             speaker
                 .set_output_pin(pwm::Channel::C0, speaker_pin)
@@ -86,35 +71,31 @@ impl BoardState {
                 .set_load_mode(pwm::LoadMode::Common)
                 .set_step_mode(pwm::StepMode::Auto)
                 .set_max_duty(256)
-                .set_seq_refresh(pwm::Seq::Seq0, 0)
-                .set_seq_end_delay(pwm::Seq::Seq0, 0)
-                .set_seq_refresh(pwm::Seq::Seq1, 0)
-                .set_seq_end_delay(pwm::Seq::Seq1, 0)
                 .enable_channel(pwm::Channel::C0)
                 .enable_group(pwm::Group::G0)
                 .loop_inf()
                 .enable();
 
-            static mut SAMPS: [u16; 240] = [0; 240];
-            sine(&mut SAMPS, 256, 4);
-            for s in &mut SAMPS {
-                *s |= 0x8000;
+            static mut SQUARE_WAVE0: [u16; 64] = [0; 64];
+            static mut SQUARE_WAVE1: [u16; 64] = [0; 64];
+            for i in 0..64 {
+                SQUARE_WAVE0[i] = 0x8000;
             }
 
-            // Start the sine wave.
-            let _pwm_seq = speaker.load(Some(&SAMPS), Some(&SAMPS), true).unwrap();
+            for i in 0..64 {
+                SQUARE_WAVE1[i] = 0x0000;
+            }
+
+            // Start the square wave
+            let _pwm_seq = speaker
+                .load(Some(&SQUARE_WAVE0), Some(&SQUARE_WAVE1), true)
+                .unwrap();
         }
     }
 
     pub fn speaker_off(&self) {
         unsafe {
             let p = pac::Peripherals::steal();
-            let my_pins = Parts::new(p.P0);
-            let speaker_pin = my_pins
-                .p0_00
-                .degrade()
-                .into_push_pull_output(gpio::Level::Low);
-
             let speaker = pwm::Pwm::new(p.PWM0);
             speaker.disable();
         }
@@ -127,10 +108,6 @@ impl BoardState {
     pub fn default_display(&self) {
         // todo
     }
-}
-
-pub struct Speaker {
-    speaker_pin: gpio::Pin<Output<PushPull>>,
 }
 
 pub struct BoardAccel {
@@ -186,7 +163,7 @@ impl BoardAccel {
         let result = combined_strength.sqrt() / 1000.0;
         self.state = match self.state {
             BoardState::Falling => {
-                if result < 0.4 {
+                if result < 0.55 {
                     rprintln!("still falling! {:?}\n", self.state);
                     self.state
                 } else {
