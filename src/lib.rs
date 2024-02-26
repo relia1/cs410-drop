@@ -73,7 +73,7 @@ impl BoardState {
                 .set_counter_mode(pwm::CounterMode::Up)
                 .set_load_mode(pwm::LoadMode::Common)
                 .set_step_mode(pwm::StepMode::Auto)
-                .set_max_duty(256)
+                .set_max_duty(128)
                 .enable_channel(pwm::Channel::C0)
                 .enable_group(pwm::Group::G0)
                 .loop_inf()
