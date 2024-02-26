@@ -30,11 +30,12 @@ fn main() -> ! {
     let mut board_accel = BoardAccel::new();
 
     let mut board = Board::take().unwrap();
+    // BOARD.init(board);
     let display = Display::new(board.TIMER1, board.display_pins);
     DISPLAY.init(display);
 
     let mut timer = Timer::new(board.TIMER0);
-    let state = BoardState::NotFalling;
+    let mut state = BoardState::NotFalling;
     let i2c = twim::Twim::new(board.TWIM0, board.i2c_internal.into(), FREQUENCY_A::K100);
     let mut sensor = Lsm303agr::new_with_i2c(i2c);
 
@@ -43,7 +44,7 @@ fn main() -> ! {
         .set_accel_mode_and_odr(
             &mut timer,
             lsm303agr::AccelMode::HighResolution,
-            lsm303agr::AccelOutputDataRate::Hz100,
+            lsm303agr::AccelOutputDataRate::Hz200,
         )
         .unwrap();
     sensor.set_accel_scale(AccelScale::G2).unwrap();
@@ -57,26 +58,27 @@ fn main() -> ! {
     let mut counter: u8 = 0;
 
     loop {
-        if counter >= 10 {
+        if counter >= 5 {
             let (x, y, z) = board_accel.average_over_sample();
             rprintln!("Averages x: {} y: {} z: {}", x, y, z);
             board_accel.microbit_is_falling(x as f32, y as f32, z as f32);
             counter = 0;
         }
+
         if sensor.accel_status().unwrap().xyz_new_data() {
             board_accel.add_tuple_to_total(sensor.acceleration().unwrap().xyz_mg());
             counter += 1;
             // rprintln!("not waiting\n");
-        } else {
-            // rprintln!("waiting\n");
-            asm::wfi();
-        }
-        /*
-        MB2_ACCEL.with_lock(|cs| {
-            let (a, b, c) = cs.get_accel_data();
-            rprintln!("{} {} {}\n", a, b, c);
-        });
-        */
+        } // else {
+          // rprintln!("waiting\n");
+          //  asm::wfi();
+          // }
+          /*
+          MB2_ACCEL.with_lock(|cs| {
+              let (a, b, c) = cs.get_accel_data();
+              rprintln!("{} {} {}\n", a, b, c);
+          });
+          */
 
         //rprintln!("main loop accel int gpiote");
         /*
@@ -108,34 +110,7 @@ fn main() -> ! {
     }
 }
 
-/*
-fn microbit_is_falling(x: i32, y: i32, z: i32) -> BoardState {
-    let combined_strength = x.powf(2.0) + y.powf(2.0) + z.powf(2.0);
-    let result = combined_strength.sqrt();
-    if result < 0.27 {
-        rprintln!("result is less than .3?: {}\n", result);
-        rprintln!("{} {} {}\t", x, y, z);
-        BoardState::Falling
-    } else {
-        BoardState::NotFalling
-    }
-}
-*/
-
-/*
-fn average_over_sample(sample_size: i16, x: i32, y: i32, z: i32) -> (i32, i32, i32) {
-    // rprintln!("{} {} {}\t", x * 1000.0, y * 1000.0, z * 1000.0);
-    let divisor: i32 = sample_size.into();
-    (x / divisor, y / divisor, z / divisor)
-}
-*/
-
-/*
- * concept: have an interrupt for the imu (accelerometer) that fills a queue and when
- * that queue is filled take a look at the data
-*/
 #[interrupt]
 fn TIMER1() {
-    // rprintln!("timer int");
     DISPLAY.with_lock(|display| display.handle_display_event());
 }
