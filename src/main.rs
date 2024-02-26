@@ -2,34 +2,31 @@
 #![no_main]
 
 use panic_rtt_target as _;
-use rtt_target::{rprintln, rtt_init_print};
+use rtt_target::rtt_init_print;
 
 use cortex_m::asm;
 use cortex_m_rt::entry;
 
-use drop::{BoardAccel, BoardState, DISPLAY}; // {BoardState, GPIO, MB2};
+use drop::{BoardAccel, DISPLAY}; // {BoardState, GPIO, MB2};
 use microbit::pac::{self as pac, interrupt};
 use microbit::{
     board::Board,
     display::nonblocking::Display,
     hal::{twim, Timer},
     pac::twim0::frequency::FREQUENCY_A,
-    pac::TIMER1,
 };
 
 use lsm303agr::{AccelScale, Lsm303agr};
 
-use critical_section_lock_mut::LockMut;
-
 #[entry]
 fn main() -> ! {
     rtt_init_print!();
-    let mut board_accel = BoardAccel::new();
 
     let mut board = Board::take().unwrap();
     // BOARD.init(board);
     let display = Display::new(board.TIMER1, board.display_pins);
     DISPLAY.init(display);
+    let mut board_accel = BoardAccel::new();
 
     let mut timer = Timer::new(board.TIMER0);
     let i2c = twim::Twim::new(board.TWIM0, board.i2c_internal.into(), FREQUENCY_A::K100);

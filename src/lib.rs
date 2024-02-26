@@ -1,15 +1,17 @@
 #![no_std]
 
 use critical_section_lock_mut::LockMut;
-use microbit::display::nonblocking::Display;
-use microbit::hal::gpio::{self, p0::Parts};
-use microbit::hal::pwm;
-use microbit::pac::{self, TIMER1};
+use microbit::{
+    display::nonblocking::{BitImage, Display},
+    hal::{
+        gpio::{self, p0::Parts},
+        pwm,
+    },
+    pac::{self, TIMER1},
+};
+
 use micromath::F32Ext;
 use panic_rtt_target as _;
-use rtt_target::rprintln;
-
-// pub static BOARD: LockMut<board::Board> = LockMut::new();
 
 pub static DISPLAY: LockMut<Display<TIMER1>> = LockMut::new();
 pub static SPEAKER: LockMut<BoardState> = LockMut::new();
@@ -22,7 +24,9 @@ pub enum BoardState {
 
 impl BoardState {
     pub fn new() -> Self {
-        Self::NotFalling
+        let board_state = { Self::NotFalling };
+        board_state.default_display();
+        board_state
     }
 
     pub fn next(self) -> BoardState {
@@ -51,7 +55,6 @@ impl BoardState {
     }
 
     pub fn speaker_on(&self) {
-        rprintln!("turning speaker on!!!!!!!!!!!\n");
         unsafe {
             let p = pac::Peripherals::steal();
             let my_pins = Parts::new(p.P0);
@@ -102,11 +105,25 @@ impl BoardState {
     }
 
     pub fn falling_display(&self) {
-        rprintln!("turning on falling display!\n");
+        let image: [[u8; 5]; 5] = [
+            [0, 0, 1, 0, 0],
+            [0, 0, 1, 0, 0],
+            [0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0],
+        ];
+        DISPLAY.with_lock(|display| display.show(&BitImage::new(&image)));
     }
 
     pub fn default_display(&self) {
-        // todo
+        let image: [[u8; 5]; 5] = [
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 1, 0, 0],
+            [0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0],
+        ];
+        DISPLAY.with_lock(|display| display.show(&BitImage::new(&image)));
     }
 }
 
@@ -164,7 +181,6 @@ impl BoardAccel {
         self.state = match self.state {
             BoardState::Falling => {
                 if result < 0.55 {
-                    rprintln!("still falling! {:?}\n", self.state);
                     self.state
                 } else {
                     self.state.next()
