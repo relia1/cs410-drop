@@ -1,3 +1,10 @@
+[profile.dev]
+debug = true
+
+# Symbols will reside on the host, not the target
+[profile.release]
+debug = true
+
 [package]
 name = "drop"
 version = "0.1.0"
